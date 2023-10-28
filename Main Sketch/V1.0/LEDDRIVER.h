@@ -33,7 +33,7 @@
 #ifdef HUB75
  #define PANEL_WIDTH            64
  #define PANEL_HEIGHT           64                  // Panel height of 64 will required PIN_E to be defined.
- #define PANELS_NUMBER          2                   // Number of chained panels, if just a single panel, obviously set to 1
+ #define PANELS_NUMBER          1                   // Number of chained panels, if just a single panel, obviously set to 1
  // only need to match panel settings above
  #define PANE_WIDTH PANEL_WIDTH * PANELS_NUMBER
  #define PANE_HEIGHT PANEL_HEIGHT
@@ -71,11 +71,11 @@ CRGB leds[NUM_LEDS];
 #define B_PIN         19
 #define C_PIN         5
 #define D_PIN         17
-#define E_PIN         22
-#define LAT_PIN       18
+#define E_PIN         18
+#define LAT_PIN       4
 #define OE_PIN        15
 #define CLK_PIN       16
-#define R1_PIN        33
+#define R1_PIN        25
 #define B2_PIN        13
 #define R2_PIN        14
 #define G2_PIN        12
@@ -136,7 +136,7 @@ void SetupHUB75(void){
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   // dma_display->setLatBlanking(2);
   // let's adjust default brightness to about xx%
-  dma_display->setBrightness8(50);    // range is 0-255, 0 - 0%, 255 - 100%
+  dma_display->setBrightness8(32);    // range is 0-255, 0 - 0%, 255 - 100%
   //dma_display->setBrightness8(map(analogRead(BRIGHTNESSPOT),0,4095,10,BRIGHTNESSMAX));
   // Allocate memory and start DMA display
   if( not dma_display->begin() )
