@@ -37,17 +37,10 @@ int Peakdelay =             60;                     // Delay before peak falls d
 int buttonPushCounter =     0;                      // This number defines what pattern to start after boot (0 to 12)
 bool autoChangePatterns =   true;                  // After boot, the pattern will not change automatically. 
 int NoiseTresshold =        1500;                   // this will effect the upper bands most.
-#define DemoAfterSec        6000                    // if there is no input signal during this number of milli seconds, the unit will go to demo mode
 #define DemoTreshold        500                     // this defines the treshold that will get the unit out of demo mode
 #define BRIGHTNESSMAX       255                     // Max brightness of the leds...carefull...to bright might draw to much amps!
 int BRIGHTNESSMARK= 50;                            // Default brightnetss, however, overruled by the Brightness potmeter
 int BRIGHTNESSMIN = 20;                              // Min brightness
-//buttonstuf don't change unless you know what you are doing
-#define ShortPress          45
-#define LongPress           2000
-#define LongerPress         4000
-#define ButtonTimeout       200
-#define ButtonSequenceRepeatTime 200
 
 //Controls  //don't change unless you are using your own hardware design
 #define BRIGHTNESSPOT 2 
