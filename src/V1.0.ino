@@ -48,6 +48,7 @@
 
   Make sure your arduino IDE settings: Compiler warnings is set to default to make sure the code will compile                                           */
 
+// Wifi Manager and OTA update
 #include <WiFiManager.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
@@ -174,6 +175,7 @@ String serverIndex =
 #include "PatternsHUB75.h"
 #include "PatternsLedstrip.h"
 #include "fire.h"
+
 int skip = true;
 int ButtonOnTimer = 0;
 int ButtonStarttime = 0;
@@ -214,6 +216,17 @@ void updateVisualizerSettings(int pattern)
   }
 }
 
+// Function to print to screen
+void printToScreen(const char *buf, int y)
+{
+  int16_t x1, y1;
+  uint16_t w, h;
+  dma_display->getTextBounds(buf, 0, y, &x1, &y1, &w, &h);
+  dma_display->setCursor(32 - (w / 2), y);
+  dma_display->setTextColor(0xffff);
+  dma_display->print(buf);
+}
+
 // Function to reset WiFi Manager settings
 void resetWiFiManagerSettings()
 {
@@ -241,6 +254,8 @@ void setup()
   }
 #endif
 
+  printToScreen("Connect to Wifi", 20);
+
   // setup wifi
   WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
   wm.autoConnect("LED_Matrix_Connect");
@@ -249,8 +264,9 @@ void setup()
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(500);
-    Serial.print(".");
+    Serial.println("wifi not connected");
   }
+
   Serial.println("");
   Serial.print("Connected to WiFi network with IP Address: ");
   Serial.println(WiFi.localIP());
