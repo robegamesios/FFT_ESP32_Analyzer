@@ -74,7 +74,7 @@ String serverIndex =
     "<h2>Select Visualizer Pattern</h2>"
     "<p>This will change the visualizer pattern.</p>"
     "<select name='option'>"
-    "<option value='12' title='Auto Change Mode'>Auto Change Mode</option>"
+    "<option value='12' title='Auto Change every 1 Min'>Auto Change every 1 Min</option>"
     "<option value='0' title='Boxed Bars'>Boxed Bars</option>"
     "<option value='1' title='Boxed Bars 2'>Boxed Bars 2</option>"
     "<option value='2' title='Boxed Bars 3'>Boxed Bars 3</option>"
@@ -337,83 +337,6 @@ void loop()
   delay(1);
 
   size_t bytesRead = 0;
-
-  // Handle Userinterface
-  {
-    if (ButtonOffTimer > ButtonTimeout)
-    {
-      ButtonStoptime = millis(); // time that no switch was presset will reset the counter.
-      ButtonSequenceCounter = 0; // reset the sequencecounter
-      if (ShortPressFlag == 1)
-      {
-        // Serial.printf("Short press detected\n");
-        buttonPushCounter = (buttonPushCounter + 1) % 13;
-#ifdef HUB75
-        dma_display->clearScreen();
-#endif
-        Serial.printf("Pattern Mode changed to: %d\n", buttonPushCounter);
-        ShortPressFlag = 0;
-      }
-    }
-    if ((ButtonOnTimer > LongerPress) && (ButtonOnTimer < (LongerPress + ShortPress)))
-    {
-      LongerPressFlag = 1;
-    }
-    else if ((ButtonOnTimer > LongPress) && (ButtonOnTimer < (LongPress + ShortPress)))
-    {
-      LongPressFlag = 1;
-    }
-    else if ((ButtonOnTimer > ShortPress) && (ButtonOnTimer < (2 * ShortPress)))
-    {
-      ShortPressFlag = 1;
-      if ((millis() - PreviousPressTime) < ButtonSequenceRepeatTime)
-      {
-        ButtonSequenceCounter++;
-        dbgprint("Multible press counter: %d\n", ButtonSequenceCounter);
-        ShortPressFlag = 0;
-        CalibrationType = (CalibrationType + 1) % 4;
-        Serial.printf("Calibration table changed to: %s\n", Filtername[CalibrationType]);
-
-        sprintf(LCDPrintBuf, "Cal Filter: %s", Filtername[CalibrationType]);
-        DisplayPrint(LCDPrintBuf);
-      }
-      PreviousPressTime = millis();
-    }
-    if (LongerPressFlag == 1)
-    {
-      dbgprint("Longer press detected\n");
-      autoChangePatterns = !autoChangePatterns;
-      if (autoChangePatterns == true)
-      {
-        Serial.print("Patterns wil now change every few seconds\n");
-        DisplayPrint((char *)"Autochange ON");
-      }
-      else
-      {
-        Serial.print("Automatically changing of pattern is now disabled\n");
-        DisplayPrint((char *)"Autochange OFF");
-      }
-      LongerPressFlag = 0;
-      ShortPressFlag = 0;
-    }
-    else if (LongPressFlag == 1)
-    {
-      dbgprint("long press detected\n");
-      autoChangePatterns = !autoChangePatterns;
-      if (autoChangePatterns == true)
-      {
-        Serial.print("Patterns wil now change every few seconds\n");
-        DisplayPrint((char *)"Autochange ON");
-      }
-      else
-      {
-        Serial.print("Automatically changing of pattern is now disabled\n");
-        DisplayPrint((char *)"Autochange OFF");
-      }
-      LongPressFlag = 0;
-      ShortPressFlag = 0;
-    }
-  } // end user interface
 
   // ############ Step 1: read samples from the I2S Buffer ##################
   i2s_read(I2S_PORT,
@@ -787,7 +710,7 @@ void loop()
   EVERY_N_MILLISECONDS(10)
   colorTimer++; // Used in some of the patterns
 
-  EVERY_N_SECONDS(SecToChangePattern)
+  EVERY_N_SECONDS(secToChangePattern)
   {
     // if (FastLED.getBrightness() == 0) FastLED.setBrightness(BRIGHTNESSMARK);  //Re-enable if lights are "off"
     if (autoChangePatterns)

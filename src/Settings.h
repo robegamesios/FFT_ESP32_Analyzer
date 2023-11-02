@@ -29,25 +29,18 @@ int  DEBUG =                0 ;                     // When debug=1, extra infor
 //Options Change to your likings
 #define BottomRowAlwaysOn   1                       // if set to 1, bottom row is always on. Setting only applies to LEDstrip not HUB75
 #define Fallingspeed        5                       // Falling down factor that effects the speed of falling tiles
-#define LogoBoot            1                       // Show logo on boot when set to 1, only works in combination with HUB75
 int Peakdelay =             60;                     // Delay before peak falls down to stack. Overruled by PEAKDEALY Potmeter
 #define GAIN_DAMPEN         2                       // Higher values cause auto gain to react more slowly
-#define SecToChangePattern  10                      // number of seconds that pattern changes when auto change mode is enabled
 #define MAX_VU              5000                    // How high our VU could max out at.  Arbitarily tuned.
 int buttonPushCounter =     0;                      // This number defines what pattern to start after boot (0 to 12)
 bool autoChangePatterns =   true;                  // After boot, the pattern will not change automatically. 
+int secToChangePattern = 60;                      // number of seconds that pattern changes when auto change mode is enabled
 int NoiseTresshold =        1500;                   // this will effect the upper bands most.
 #define DemoAfterSec        6000                    // if there is no input signal during this number of milli seconds, the unit will go to demo mode
 #define DemoTreshold        500                     // this defines the treshold that will get the unit out of demo mode
 #define BRIGHTNESSMAX       255                     // Max brightness of the leds...carefull...to bright might draw to much amps!
 int BRIGHTNESSMARK= 50;                            // Default brightnetss, however, overruled by the Brightness potmeter
 int BRIGHTNESSMIN = 20;                              // Min brightness
-//buttonstuf don't change unless you know what you are doing
-#define ShortPress          45
-#define LongPress           2000
-#define LongerPress         4000
-#define ButtonTimeout       200
-#define ButtonSequenceRepeatTime 200
 
 //Controls  //don't change unless you are using your own hardware design
 #define BRIGHTNESSPOT 2 
