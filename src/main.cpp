@@ -2,51 +2,16 @@
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 
 /********************************************************************************************************************************************************
-*                                                                                                                                                       *
-   Project:         FFT Spectrum Analyzer
-   Target Platform: ESP32
-*                                                                                                                                                       *
-   Version: 1.0
-   Hardware setup: See github
-   Spectrum analyses done with analog chips MSGEQ7
-*                                                                                                                                                       *
-   Mark Donners
-   The Electronic Engineer
-   Website:   www.theelectronicengineer.nl
-   facebook:  https://www.facebook.com/TheelectronicEngineer
-   youtube:   https://www.youtube.com/channel/UCm5wy-2RoXGjG2F9wpDFF3w
-   github:    https://github.com/donnersm
-*                                                                                                                                                       *
-*********************************************************************************************************************************************************
-  Version History
-   1.0 First release, code extraced from 14 band spectrum analyzer 3.00 and modified to by used with FFT on a ESP32. No need for frequency board or
-       MCGEQ7 chips.
-       - HUB75 interface or
-       - WS2812 leds ( matrix/ledstrips)
-       - 8/16/32 or 64 channel analyzer
-       - calibration for White noise, pink noise, brown noise sensitivity included and selectable
-       - Fire screensaver
-       - Display of logo and interface text when used with HUB75
-*                                                                                                                                                       *
-*********************************************************************************************************************************************************
-  Version FFT 1.0 release July 2021
-*********************************************************************************************************************************************************
-   Status   | Description
-   Open     | Some Hub75 displays use a combination of chipsets of are from a different productions batch which will not work with this libary
-   Open     | Sometime the long press for activating/de-activating the autoChange Pattern mode doesn't work
-   Solved   | When using 64 bands, band 0 is always at max value. This was caused by the array dize [64]-> solved by chnaging it to 65
-  Not a bug | Different types of HUB75 displays require different libary settings.It is what it is and it all depends on what the distributer sends you.
-            | For into on the libary settings, see the library documentation on Github: https://github.com/mrfaptastic/ESP32-HUB75-MatrixPanel-I2S-DMA
-  Wish      | Web interface. not possible without some heavy workaround cant use WIFI and ADC at same time
-* *******************************************************************************************************************************************************
-  People who inspired me to do this build and figure out how stuff works:
-  Dave Plummer         https://www.youtube.com/channel/UCNzszbnvQeFzObW0ghk0Ckw
-  Mrfaptastic          https://github.com/mrfaptastic
-  Scott Marley         https://www.youtube.com/user/scottmarley85
-  Brian Lough          https://www.youtube.com/user/witnessmenow
-  atomic14             https://www.youtube.com/channel/UC4Otk-uDioJN0tg6s1QO9lw
+ * EPS32 Audio Visualizer 
+ * Github: https://github.com/robegamesios/FFT_ESP32_Analyzer
+ * Features:
+ *  Web interface by accessing the ESP32 wifi address
+ *  Update the firmware via OTA
+ * 
+ * Forked from https://github.com/donnersm/FFT_ESP32_Analyzer
+ 
+********************************************************************************************************************************************************/
 
-  Make sure your arduino IDE settings: Compiler warnings is set to default to make sure the code will compile                                           */
 
 // Wifi Manager and OTA update
 #include <WiFiManager.h>
@@ -162,8 +127,6 @@ String serverIndex =
     "</script>" +
     style;
 
-#define VERSION "V1.0"
-
 #include <FastLED_NeoMatrix.h>
 #include <arduinoFFT.h>
 #include "I2SPLUGIN.h"
@@ -232,6 +195,224 @@ void resetWiFiManagerSettings()
 {
   wm.resetSettings();
   ESP.restart();
+}
+
+// BucketFrequency
+//
+// Return the frequency corresponding to the Nth sample bucket.  Skips the first two
+// buckets which are overall amplitude and something else.
+
+int BucketFrequency(int iBucket)
+{
+  if (iBucket <= 1)
+    return 0;
+  int iOffset = iBucket - 2;
+  return iOffset * (samplingFrequency / 2) / (SAMPLEBLOCK / 2);
+}
+
+void DrawVUPixels(int i, int yVU, int fadeBy = 0)
+{
+  CRGB VUC;
+  if (i > (PANE_WIDTH / 3))
+  {
+    VUC.r = 255;
+    VUC.g = 0;
+    VUC.b = 0;
+  }
+  else if (i > (PANE_WIDTH / 5))
+  {
+    VUC.r = 255;
+    VUC.g = 255;
+    VUC.b = 0;
+  }
+  else
+  { // green
+    VUC.r = 0;
+    VUC.g = 255;
+    VUC.b = 0;
+  }
+
+#ifdef Ledstrip
+  int xHalf = matrix->width() / 2;
+  //  matrix->drawPixel(xHalf-i-1, yVU, CRGB(0,100,0).fadeToBlackBy(fadeBy));
+  //  matrix->drawPixel(xHalf+i,   yVU, CRGB(0,100,0).fadeToBlackBy(fadeBy));
+  matrix->drawPixel(xHalf - i - 1, yVU, CRGB(VUC.r, VUC.g, VUC.b).fadeToBlackBy(fadeBy));
+  matrix->drawPixel(xHalf + i, yVU, CRGB(VUC.r, VUC.g, VUC.b).fadeToBlackBy(fadeBy));
+
+#endif
+
+#ifdef HUB75
+  int xHalf = PANE_WIDTH / 2;
+  dma_display->drawPixelRGB888(xHalf - i - 2, yVU, VUC.r, VUC.g, VUC.b);     // left side of screen line 0
+  dma_display->drawPixelRGB888(xHalf - i - 2, yVU + 1, VUC.r, VUC.g, VUC.b); // left side of screen line 1
+  dma_display->drawPixelRGB888(xHalf + i + 1, yVU, VUC.r, VUC.g, VUC.b);     // right side of screen line 0
+  dma_display->drawPixelRGB888(xHalf + i + 1, yVU + 1, VUC.r, VUC.g, VUC.b); // right side of screen line 1
+#endif
+}
+
+void DrawVUMeter(int yVU)
+{
+  static int iPeakVUy = 0;           // size (in LED pixels) of the VU peak
+  static unsigned long msPeakVU = 0; // timestamp in ms when that peak happened so we know how old it is
+  const int MAX_FADE = 256;
+#ifdef HUB75
+  for (int x = 0; x < PANE_WIDTH; x++)
+  {
+    dma_display->drawPixelRGB888(x, yVU, 0, 0, 0);
+    dma_display->drawPixelRGB888(x, yVU + 1, 0, 0, 0);
+  }
+#endif
+#ifdef Ledstrip
+  matrix->fillRect(0, yVU, matrix->width(), 1, 0x0000);
+#endif
+  if (iPeakVUy > 1)
+  {
+    int fade = MAX_FADE * (millis() - msPeakVU) / (float)1000;
+    DrawVUPixels(iPeakVUy, yVU, fade);
+  }
+  int xHalf = (PANE_WIDTH / 2) - 1;
+  int bars = map(gVU, 0, MAX_VU, 1, xHalf);
+  bars = min(bars, xHalf);
+  if (bars > iPeakVUy)
+  {
+    msPeakVU = millis();
+    iPeakVUy = bars;
+  }
+  else if (millis() - msPeakVU > 1000)
+    iPeakVUy = 0;
+  for (int i = 0; i < bars; i++)
+    DrawVUPixels(i, yVU);
+}
+
+void Calibration(void)
+{
+  Serial.printf("BandCalibration_XXXX[%1d]=\n{", numBands);
+  long Totalbnd = 0;
+
+  for (int g = 0; g < numBands; g++)
+  {
+    if (bndcounter[g] > Totalbnd)
+      Totalbnd = bndcounter[g];
+  }
+
+  for (int g = 0; g < numBands; g++)
+  {
+    bndcounter[g] = Totalbnd / bndcounter[g];
+    Serial.printf(" %2.2f", bndcounter[g]);
+    if (g < numBands - 1)
+      Serial.printf(",");
+    else
+      Serial.print(" };\n");
+  }
+}
+
+//**************************************************************************************************
+//                                          D B G P R I N T                                        *
+//**************************************************************************************************
+// Send a line of info to serial output.  Works like vsprintf(), but checks the DEBUG flag.        *
+// Print only if DEBUG flag is true.  Always returns the formatted string.                         *
+// Usage dbgprint("this is the text you want: %d", variable);
+//**************************************************************************************************
+void dbgprint(const char *format, ...)
+{
+  if (DEBUG)
+  {
+    static char sbuf[DEBUG_BUFFER_SIZE];            // For debug lines
+    va_list varArgs;                                // For variable number of params
+    va_start(varArgs, format);                      // Prepare parameters
+    vsnprintf(sbuf, sizeof(sbuf), format, varArgs); // Format the message
+    va_end(varArgs);                                // End of using parameters
+    if (DEBUG)                                      // DEBUG on?
+    {
+      Serial.print("Debug: "); // Yes, print prefix
+      Serial.println(sbuf);    // and the info
+    }
+    // return sbuf; // Return stored string
+  }
+}
+
+void make_fire()
+{
+  uint16_t i, j;
+
+  if (t > millis())
+    return;
+  t = millis() + (1000 / FPS);
+
+  // First, move all existing heat points up the display and fade
+
+  for (i = rows - 1; i > 0; --i)
+  {
+    for (j = 0; j < cols; ++j)
+    {
+      uint8_t n = 0;
+      if (pix[i - 1][j] > 0)
+        n = pix[i - 1][j] - 1;
+      pix[i][j] = n;
+    }
+  }
+
+  // Heat the bottom row
+  for (j = 0; j < cols; ++j)
+  {
+    i = pix[0][j];
+    if (i > 0)
+    {
+      pix[0][j] = random(NCOLORS - 6, NCOLORS - 2);
+    }
+  }
+
+  // flare
+  for (i = 0; i < nflare; ++i)
+  {
+    int x = flare[i] & 0xff;
+    int y = (flare[i] >> 8) & 0xff;
+    int z = (flare[i] >> 16) & 0xff;
+    glow(x, y, z);
+    if (z > 1)
+    {
+      flare[i] = (flare[i] & 0xffff) | ((z - 1) << 16);
+    }
+    else
+    {
+      // This flare is out
+      for (int j = i + 1; j < nflare; ++j)
+      {
+        flare[j - 1] = flare[j];
+      }
+      --nflare;
+    }
+  }
+  newflare();
+
+  // Set and draw
+  for (i = 0; i < rows; ++i)
+  {
+    for (j = 0; j < cols; ++j)
+    {
+      // matrix -> drawPixel(j, rows - i, colors[pix[i][j]]);
+      CRGB COlsplit = colors[pix[i][j]];
+#ifdef HUB75
+      dma_display->drawPixelRGB888(j, rows - i, COlsplit.r, COlsplit.g, COlsplit.b);
+#endif
+#ifdef Ledstrip
+      matrix->drawPixel(j, rows - i, colors[pix[i][j]]);
+#endif
+    }
+  }
+}
+
+void DisplayPrint(char *text)
+{
+#ifdef HUB75
+  dma_display->fillRect(8, 8, kMatrixWidth - 16, 11, dma_display->color444(0, 0, 0));
+  dma_display->setTextSize(1);
+  dma_display->setTextWrap(false);
+  dma_display->setCursor(10, 10);
+  dma_display->print(text);
+  delay(1000);
+  dma_display->fillRect(8, 8, kMatrixWidth - 16, 11, dma_display->color444(0, 0, 0));
+#endif
 }
 
 void setup()
@@ -744,221 +925,3 @@ void loop()
 #endif
 
 } // loop end
-
-// BucketFrequency
-//
-// Return the frequency corresponding to the Nth sample bucket.  Skips the first two
-// buckets which are overall amplitude and something else.
-
-int BucketFrequency(int iBucket)
-{
-  if (iBucket <= 1)
-    return 0;
-  int iOffset = iBucket - 2;
-  return iOffset * (samplingFrequency / 2) / (SAMPLEBLOCK / 2);
-}
-
-void DrawVUPixels(int i, int yVU, int fadeBy = 0)
-{
-  CRGB VUC;
-  if (i > (PANE_WIDTH / 3))
-  {
-    VUC.r = 255;
-    VUC.g = 0;
-    VUC.b = 0;
-  }
-  else if (i > (PANE_WIDTH / 5))
-  {
-    VUC.r = 255;
-    VUC.g = 255;
-    VUC.b = 0;
-  }
-  else
-  { // green
-    VUC.r = 0;
-    VUC.g = 255;
-    VUC.b = 0;
-  }
-
-#ifdef Ledstrip
-  int xHalf = matrix->width() / 2;
-  //  matrix->drawPixel(xHalf-i-1, yVU, CRGB(0,100,0).fadeToBlackBy(fadeBy));
-  //  matrix->drawPixel(xHalf+i,   yVU, CRGB(0,100,0).fadeToBlackBy(fadeBy));
-  matrix->drawPixel(xHalf - i - 1, yVU, CRGB(VUC.r, VUC.g, VUC.b).fadeToBlackBy(fadeBy));
-  matrix->drawPixel(xHalf + i, yVU, CRGB(VUC.r, VUC.g, VUC.b).fadeToBlackBy(fadeBy));
-
-#endif
-
-#ifdef HUB75
-  int xHalf = PANE_WIDTH / 2;
-  dma_display->drawPixelRGB888(xHalf - i - 2, yVU, VUC.r, VUC.g, VUC.b);     // left side of screen line 0
-  dma_display->drawPixelRGB888(xHalf - i - 2, yVU + 1, VUC.r, VUC.g, VUC.b); // left side of screen line 1
-  dma_display->drawPixelRGB888(xHalf + i + 1, yVU, VUC.r, VUC.g, VUC.b);     // right side of screen line 0
-  dma_display->drawPixelRGB888(xHalf + i + 1, yVU + 1, VUC.r, VUC.g, VUC.b); // right side of screen line 1
-#endif
-}
-
-void DrawVUMeter(int yVU)
-{
-  static int iPeakVUy = 0;           // size (in LED pixels) of the VU peak
-  static unsigned long msPeakVU = 0; // timestamp in ms when that peak happened so we know how old it is
-  const int MAX_FADE = 256;
-#ifdef HUB75
-  for (int x = 0; x < PANE_WIDTH; x++)
-  {
-    dma_display->drawPixelRGB888(x, yVU, 0, 0, 0);
-    dma_display->drawPixelRGB888(x, yVU + 1, 0, 0, 0);
-  }
-#endif
-#ifdef Ledstrip
-  matrix->fillRect(0, yVU, matrix->width(), 1, 0x0000);
-#endif
-  if (iPeakVUy > 1)
-  {
-    int fade = MAX_FADE * (millis() - msPeakVU) / (float)1000;
-    DrawVUPixels(iPeakVUy, yVU, fade);
-  }
-  int xHalf = (PANE_WIDTH / 2) - 1;
-  int bars = map(gVU, 0, MAX_VU, 1, xHalf);
-  bars = min(bars, xHalf);
-  if (bars > iPeakVUy)
-  {
-    msPeakVU = millis();
-    iPeakVUy = bars;
-  }
-  else if (millis() - msPeakVU > 1000)
-    iPeakVUy = 0;
-  for (int i = 0; i < bars; i++)
-    DrawVUPixels(i, yVU);
-}
-
-void Calibration(void)
-{
-  Serial.printf("BandCalibration_XXXX[%1d]=\n{", numBands);
-  long Totalbnd = 0;
-
-  for (int g = 0; g < numBands; g++)
-  {
-    if (bndcounter[g] > Totalbnd)
-      Totalbnd = bndcounter[g];
-  }
-
-  for (int g = 0; g < numBands; g++)
-  {
-    bndcounter[g] = Totalbnd / bndcounter[g];
-    Serial.printf(" %2.2f", bndcounter[g]);
-    if (g < numBands - 1)
-      Serial.printf(",");
-    else
-      Serial.print(" };\n");
-  }
-}
-
-//**************************************************************************************************
-//                                          D B G P R I N T                                        *
-//**************************************************************************************************
-// Send a line of info to serial output.  Works like vsprintf(), but checks the DEBUG flag.        *
-// Print only if DEBUG flag is true.  Always returns the formatted string.                         *
-// Usage dbgprint("this is the text you want: %d", variable);
-//**************************************************************************************************
-void dbgprint(const char *format, ...)
-{
-  if (DEBUG)
-  {
-    static char sbuf[DEBUG_BUFFER_SIZE];            // For debug lines
-    va_list varArgs;                                // For variable number of params
-    va_start(varArgs, format);                      // Prepare parameters
-    vsnprintf(sbuf, sizeof(sbuf), format, varArgs); // Format the message
-    va_end(varArgs);                                // End of using parameters
-    if (DEBUG)                                      // DEBUG on?
-    {
-      Serial.print("Debug: "); // Yes, print prefix
-      Serial.println(sbuf);    // and the info
-    }
-    // return sbuf; // Return stored string
-  }
-}
-
-void make_fire()
-{
-  uint16_t i, j;
-
-  if (t > millis())
-    return;
-  t = millis() + (1000 / FPS);
-
-  // First, move all existing heat points up the display and fade
-
-  for (i = rows - 1; i > 0; --i)
-  {
-    for (j = 0; j < cols; ++j)
-    {
-      uint8_t n = 0;
-      if (pix[i - 1][j] > 0)
-        n = pix[i - 1][j] - 1;
-      pix[i][j] = n;
-    }
-  }
-
-  // Heat the bottom row
-  for (j = 0; j < cols; ++j)
-  {
-    i = pix[0][j];
-    if (i > 0)
-    {
-      pix[0][j] = random(NCOLORS - 6, NCOLORS - 2);
-    }
-  }
-
-  // flare
-  for (i = 0; i < nflare; ++i)
-  {
-    int x = flare[i] & 0xff;
-    int y = (flare[i] >> 8) & 0xff;
-    int z = (flare[i] >> 16) & 0xff;
-    glow(x, y, z);
-    if (z > 1)
-    {
-      flare[i] = (flare[i] & 0xffff) | ((z - 1) << 16);
-    }
-    else
-    {
-      // This flare is out
-      for (int j = i + 1; j < nflare; ++j)
-      {
-        flare[j - 1] = flare[j];
-      }
-      --nflare;
-    }
-  }
-  newflare();
-
-  // Set and draw
-  for (i = 0; i < rows; ++i)
-  {
-    for (j = 0; j < cols; ++j)
-    {
-      // matrix -> drawPixel(j, rows - i, colors[pix[i][j]]);
-      CRGB COlsplit = colors[pix[i][j]];
-#ifdef HUB75
-      dma_display->drawPixelRGB888(j, rows - i, COlsplit.r, COlsplit.g, COlsplit.b);
-#endif
-#ifdef Ledstrip
-      matrix->drawPixel(j, rows - i, colors[pix[i][j]]);
-#endif
-    }
-  }
-}
-
-void DisplayPrint(char *text)
-{
-#ifdef HUB75
-  dma_display->fillRect(8, 8, kMatrixWidth - 16, 11, dma_display->color444(0, 0, 0));
-  dma_display->setTextSize(1);
-  dma_display->setTextWrap(false);
-  dma_display->setCursor(10, 10);
-  dma_display->print(text);
-  delay(1000);
-  dma_display->fillRect(8, 8, kMatrixWidth - 16, 11, dma_display->color444(0, 0, 0));
-#endif
-}
